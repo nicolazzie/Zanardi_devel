@@ -1,14 +1,13 @@
 ## This program checks the map file, controls consistency and avoids errors related to unknown naming of chromosomes
 ## G.Marras + E.Nicolazzi
 
-def chk_map(mapfile,nchrom,spe):
+def chk_map(mapfile,nchrom,spe,imputation):
     chr_sex={'Y':nchrom+1,'X':nchrom+2,'MT':nchrom+3,'XY':nchrom+4}
 #    special_chr=nchrom+1,nchrom+2,nchrom+3,nchrom+4] #non-autosomal chromosomes in numbers
 
     #Read all maps together
     chromosome=dict( (map_line.upper().strip().split()[0],0) for map_single in mapfile for map_line in open(map_single) )
     war_chr=[True]
-
     chr_residual = [chr_list for chr_list in chromosome if not chr_list.isdigit()]
     chr_final=list(set(chr_residual)-set(chr_sex))
     if chr_final:return(False,"Chromosome in map file(s) not valid: "+' '.join(chr_final))
@@ -29,3 +28,19 @@ def chk_map(mapfile,nchrom,spe):
         else:
             war_chr="Non-autosomal chromosomes not found in mapfiles. If this is unexpected, check your map file(s)"
     return(True,war_chr)
+
+
+def snp_position(mapfile,path):
+    error=False;position=[];dict_snp={}
+    for line in open(mapfile):
+        chrom,SNP,val,pos=line.strip().split()
+        if (chrom,pos) in dict_snp:
+            if error==False:
+                output=open(path+'/Error_SNP_position.txt','w')
+                output.write('SNP_ID;CHROM;POSITION\n')
+                error=True
+            output.write('%s;%s;%s\n' % (SNP,chrom,pos ))
+        else:
+            dict_snp[chrom,pos]=[0]
+    if error:return(False,"Markers with identical CROM+POS found! Imputation software would crash, so I'm stopping.\n"+" "*12+"Please correct (see %s/Error_SNP_position.txt) and rerun " % (path))
+    return(True,'')

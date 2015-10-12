@@ -180,6 +180,27 @@ def beagle_par(PARAMETERS,OUTDIR,output_name,DEBUG):
     if DEBUG:print('BEAGLE OPTIONS:\n'+str(variables)+'\n'+str(beagle_vals))
     return(True,beagle_vals,beagle_def)
 
+### Read FImpute parameters
+def fimpute_par(PARAMETERS,OUTDIR,output_name,DEBUG):
+    variables=['FMP_NJOB','FMP_OTHOPT']
+    fimpute_vals= ['1','']
+    fimpute_def=[False,False]
+
+    for variable in variables:
+        matching=[par for par in PARAMETERS if variable in par][0].strip().split('=',1)        
+        if not matching[0]:
+            return(False,variable + " required variable not found in parameter file!")
+        if variable in variables[:1]:
+            i=variables.index(variable)
+            if len(matching[1])==0:continue
+            fimpute_vals[i]=matching[1]
+            fimpute_def[i]=True
+            check_range(fimpute_vals[i],0,9999999999,variable)
+        if variable == variables[1]:                 ### Custom (fimpute) options
+            if len(matching[1])!=0:fimpute_vals[1] = matching[1]
+        
+    return(True,fimpute_vals)
+
 ### Read ROH parameters
 def roh_par(PARAMETERS,TMPDIR,OUTDIR,output_name,DEBUG):
     variables=['ROH_SNP','ROH_MAXMIS','ROH_MAXHET','ROH_MINLEN']

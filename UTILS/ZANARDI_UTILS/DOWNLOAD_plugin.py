@@ -2,7 +2,7 @@ import subprocess as sub
 
 def runit(usropt,UTILDIR,SyS,HERE,DEBUG):
     ### List software to download - check if option is within options
-    DOWN_opts = ['plink','fcgene','beagle3','beagle4','admixture']
+    DOWN_opts = ['plink','fcgene','beagle3','beagle4','admixture','fimpute']
     for prog in usropt:
         if not prog in DOWN_opts:return(False,"Invalid software request ("+prog+") -> See Zanardi's manual for accepted values")
 

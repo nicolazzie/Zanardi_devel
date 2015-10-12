@@ -20,6 +20,8 @@ History:
    20150923: GM: Adding of --gsprep option
    20150925: ELN: Improve speed and option os --pedigchk option
    20150928: GM: Adding of --optiprep option
+   20151006: GM+ELN: Bug fix (beagle3 and beagle4)
+   20151008: GM: Adding of --fimpute option
 
 For bug report/comments, please write to: ezequiel.nicolazzi@ptp.it or gabriele.marras@ptp.it
 """
@@ -37,7 +39,8 @@ if not pydir_util in sys.path:sys.path.insert(1,pydir_util)
 import DOWNLOAD_plugin, PARAM_read, CHECK_map,\
        PLINK_plugin, INTERBULL_convert, HAPLO_plugin,\
        PEDIG_plugin, ROH_plugin, ADMIXTURE_plugin,\
-       GSPREP_plugin, PHENO_PEDIG_plugin, OPTIPREP_plugin
+       GSPREP_plugin, PHENO_PEDIG_plugin, OPTIPREP_plugin,\
+       FIMPUTE_plugin
 
 ################################################
 ### Useful defs
@@ -82,6 +85,8 @@ parser.add_option("--beagle3", action = "store_true", dest = "BEAGLE3", default 
                   help = "Runs BEAGLE v.3 imputation software")
 parser.add_option("--beagle4", action = "store_true", dest = "BEAGLE4", default = False,
                   help = "Runs BEAGLE v.4 imputation software")
+parser.add_option("--fimpute", action = "store_true", dest = "FIMPUTE", default = False,
+                  help = "Runs FImpute imputation software")
 parser.add_option("--haprep", dest = "HAPREP", default = False,
                   help = "Prepares files for haplotype check of carriers - provide breed (FLK or BSW)")
 parser.add_option("--froh", action = "store_true", dest = "FROH", default = False,
@@ -141,13 +146,20 @@ sub.call(["mkdir -p %s" % opt.OUTDIR],shell = True)
 if not os.path.isdir(opt.TMPDIR):bomb("Something went wrong while creating TEMP directory")
 if not os.path.isdir(opt.OUTDIR):bomb("Something went wrong while creating output directory ( %s )" % opt.OUTDIR)
 if not os.path.exists(opt.PARAM):bomb("Parameter file not found!!! Looking for: %s" % opt.PARAM)
-if opt.BEAGLE4 and opt.BEAGLE3 :bomb("Beagle v.3 and v.4 cannot be run simultaneously! Please choose one of the two.")
-if not (opt.PLINKQC or opt.MDSPLOT or opt.PEDIG or opt.BEAGLE3 or opt.BEAGLE4 or opt.FROH or opt.ROH or opt.ADMIXTURE or opt.HAPREP or opt.GSPREP or opt.OPTIPREP):
+
+imputation=[]
+if opt.BEAGLE3:imputation.append(True)
+if opt.BEAGLE4:imputation.append(True)
+if opt.FIMPUTE:imputation.append(True)
+if sum(imputation)>1 :bomb("Imputation procedures (Beagle v.3/v.4 and FImpute) cannot be run simultaneously! Please choose just one of the three")
+if not (opt.PLINKQC or opt.MDSPLOT or opt.PEDIG or opt.BEAGLE3 or opt.BEAGLE4 or opt.FROH or opt.ROH or opt.ADMIXTURE or opt.HAPREP \
+    or opt.GSPREP or opt.OPTIPREP or opt.FIMPUTE):
     bomb ('an analysis is required! Please type "python Zanardi.py -h" for a list of options')
 ### Check haprep options. And if no imputation routine is chosen, activate BEAGLE4 by default.
 if opt.HAPREP:
+    if sum(imputation) != 0: bomb("Option --haprep does not accept imputation software option")###EZE CHECK PLEASE
     if not opt.HAPREP in ('BSW','FLK'): bomb('Option --haprep accepts only BSW (Brown Swiss) and FLK (Fleckvieh) parameters. NOTE: Use only these breeds!')
-    if not opt.BEAGLE3 or opt.BEAGLE4:warn('Option --haprep does not accept missing alleles. Beagle4 activated by default');opt.BEAGLE4=True
+    if not opt.BEAGLE3 or opt.BEAGLE4 or opt.FIMPUTE:warn('Option --haprep does not accept missing alleles. Beagle4 activated by default');opt.BEAGLE4=True
 
 ########################################################
 # READING AND IMPORTING PARAMFILE options (and check it)
@@ -182,6 +194,12 @@ if opt.ADMIXTURE:
     if cpath[0]:ADMIXTURE_PATH=cpath[1]
     else:bomb(cpath[1])
 
+if opt.FIMPUTE:
+    cpath=PARAM_read.check_path('PGM_FIMPUTE',PARAMETERS,opt.DEBUG,'FImpute')
+    if cpath[0]:FIMPUTE_PATH=cpath[1]
+    else:bomb(cpath[1])
+
+
 ### PARAM READ: PLINK or ITB STYLE - INPUT FILES
 inputf=PARAM_read.inputfi(PARAMETERS,opt.DEBUG,opt.PEDIG,opt.GSPREP)
 if inputf[0]:pedfile,mapfile,Ibull,Ibull_map,pedigree,spe,nchrom,output_name,phenotype=inputf[1:]
@@ -206,6 +224,12 @@ if opt.BEAGLE3 or opt.BEAGLE4: ### PARAM READ: OPTS FOR BEAGLE 3 and 4
     beapar=PARAM_read.beagle_par(PARAMETERS,opt.OUTDIR,output_name,opt.DEBUG)
     if beapar[0]:beagle_vals,beagle_def=beapar[1:]
     else:bomb(beapar[1])
+
+if opt.FIMPUTE: ### PARAM READ: OPTS FOR FIMPUTE
+    PARAMETERS_fimpute=[ind.strip() for ind in PARAMFILE_OPEN if not '#' in ind[0]]
+    fimpar=PARAM_read.fimpute_par(PARAMETERS_fimpute,opt.OUTDIR,output_name,opt.DEBUG)
+    if fimpar[0]:fimpute_vals,fimpute_def=fimpar[1]
+    else:bomb(fimpar[1])
 
 if opt.FROH or opt.ROH: ### PARAM READ: OPTS FOR ROH & FROH
     rohpar=PARAM_read.roh_par(PARAMETERS,opt.TMPDIR,opt.OUTDIR,output_name,opt.DEBUG)
@@ -249,16 +273,13 @@ if opt.MDSPLOT or opt.ROH or opt.ADMIXTURE:
     logit("             -> install.packages('ggplot2')")
     logit("")
 
-
 if spe.upper().replace('--','').strip() != 'CHR-SET 59':
     if Ibull != "NOT PROVIDED"  and spe.upper().replace('--','').strip() != 'COW':
         bomb('if you provide 705 file, change SPECIES in COW or ALL in parameter file!!')
 
-
 ####################################################
 ### DOING STUFF: Interbull conversion (if req'd)
 ####################################################
-
 if pedfile == "NOT PROVIDED":pedfile=[];mapfile=[]
 if Ibull != "NOT PROVIDED":  #if len(Ibull)>0 and 
     logit(" ==>  Converting Interbull 705 fmt into PLINK (PED & MAP) fmt \n")
@@ -304,10 +325,9 @@ if Ibull != "NOT PROVIDED":  #if len(Ibull)>0 and
 
 
 ### Check mapfile and species
-mapchk=CHECK_map.chk_map(mapfile,nchrom,spe) 
+mapchk=CHECK_map.chk_map(mapfile,nchrom,spe,imputation) 
 if not mapchk[0]:bomb(mapchk[1])
 if  mapchk[1]:warn(mapchk[1])
-
 
 #####################################################################################################
 ### DOING STUFF: PLINK merge of all plinks available (if req'd) and standardize separator (if req'd)
@@ -351,7 +371,9 @@ if opt.DEBUG:logit('PED_MAP_AFTER_MERGE:\n Pedfile:\n'+str(pedfile)+'\n Mapfile:
 ### DOING STUFF: Check error in pedrigree/phenotype file for PEDIG & GSPREP option 
 ###################################################################################
 ## PEDIGREE check
-if opt.GSPREP or opt.PEDIG or opt.OPTIPREP:
+fimpute_pedigree=False
+if not 'NOT PROVIDED' in pedigree and opt.FIMPUTE:fimpute_pedigree=True
+if opt.GSPREP or opt.PEDIG or opt.OPTIPREP or fimpute_pedigree:
     logit('\n      -------------------')
     logit(' ***  PEDIGREE FILE CHECK ***')
     logit('      -------------------')
@@ -362,7 +384,7 @@ if opt.GSPREP or opt.PEDIG or opt.OPTIPREP:
                  12+"Check full list in %s" % ( outcome[1]) )
     #control sort and consistency
     if opt.PEDIG: outcome = PHENO_PEDIG_plugin.pedigree_control(pedigree,False,opt.OUTDIR,False) #1st T:1 parent "0" ok.2nd T:relaxed control
-    if opt.OPTIPREP: outcome = PHENO_PEDIG_plugin.pedigree_control(pedigree,False,opt.OUTDIR,True) #1st T:1 parent "0" ok.2nd T:strict control
+    if opt.OPTIPREP or opt.FIMPUTE: outcome = PHENO_PEDIG_plugin.pedigree_control(pedigree,False,opt.OUTDIR,True) #1st T:1 parent "0" ok.2nd T:strict control
     if opt.GSPREP:outcome = PHENO_PEDIG_plugin.pedigree_control(pedigree,True,opt.OUTDIR,True) #1st T:parents both "0".2nd T:strict control
     if not outcome[0]:bomb(outcome[1])
     else:
@@ -587,10 +609,12 @@ if opt.BEAGLE3:
     if 'finished' in outcome[-1]:logit("\n"+" "*14+"[GOOD NEWS]: BEAGLE v.3 run OK!")
     else: bomb("BEAGLE failed! Please check "+opt.TMPDIR+"/<beaglenamefile>.log to find what went wrong!")
 
-    ## Conversion Beagle to Plink Format 
+ ## Conversion Beagle to Plink Format 
     logit('\n      Step 4: Go back to PLINK format')
     outcome = sub.Popen([str(FCGENE_PATH+'./fcgene --bgl '+beagle_vals[2]+\
-              '.PLINK_beagle.bgl.phased.gz --oformat plink --out '+beagle_vals[2]+'_IMPUTED')],\
+              '.PLINK_beagle.bgl.phased.gz --oformat plink  --pedinfo '\
+                                 +opt.TMPDIR+'/PLINK_beagle_pedinfo.txt --snpinfo '\
+              +opt.TMPDIR+'/PLINK_beagle_snpinfo.txt --out '+beagle_vals[2]+'_IMPUTED')],\
                shell=True,stdout=sub.PIPE, stderr=sub.STDOUT).stdout.readlines()
     if opt.DEBUG:logit('OUTCOME_FCGENE_LAST(BEAGLE3):\n'+str(outcome)+'\n')
 
@@ -622,12 +646,11 @@ if opt.BEAGLE4:
     
     ##check allele type in ped file
     alleletype=0
-    with open(pedfile,'r') as bg_ped:
-        lines=bg_ped.readline()
-        if 'B' in lines.replace('\t',' ').strip().split(): alleletype='A B'
-        elif '1' in lines.replace('\t',' ').strip().split(): alleletype='1 2'
+    lines=open(pedfile,'r').readline()
+    if 'B' in lines.replace('\t',' ').strip().split()[6:]: alleletype='A B'
+    elif '1' in lines.replace('\t',' ').strip().split()[6:]: alleletype='1 2'
 
-   ##convert allele if necessary 
+    ##convert allele if necessary 
     if alleletype:
         beagle_ped1=open(opt.TMPDIR+'/BEAGLE4_convert.ped', 'w')
         for line in open(pedfile):
@@ -647,10 +670,13 @@ if opt.BEAGLE4:
             bomb("Markers with identical ID found ("+name+")! Beagle v.4 would crash, so I'm stopping.\n"+" "*11+\
                  "Please correct (see %s/BEAGLE4_infile.log) and rerun " % (opt.TMPDIR))
         else:checkid[name]=0
-        if checkpos.has_key((crom,pos)):
-            bomb("Markers with identical CROM+POS found ("+name+")! Beagle v.4 would crash, so I'm stopping.\n"+" "*11+\
-                 "Please correct (see %s/BEAGLE4_infile.log) and rerun " % (opt.TMPDIR))
-        else:checkpos[(crom,pos)]=0
+        #if checkpos.has_key((crom,pos)):
+        #    bomb("Markers with identical CROM+POS found ("+name+")! Beagle v.4 would crash, so I'm stopping.\n"+" "*11+\
+        #         "Please correct (see %s/BEAGLE4_infile.log) and rerun " % (opt.TMPDIR))
+        #else:checkpos[(crom,pos)]=0
+
+    outcome=CHECK_map.snp_position(mapfile,opt.OUTDIR)
+    if not outcome[0]:bomb(outcome[1])
 
     ## Convert PED to VCF using plink 1.9
     logit('\n      Step 1: Convert PED to VCF format using PLINK')
@@ -709,6 +735,123 @@ if opt.BEAGLE4:
     if not opt.SAVEIT: 
         logit('\n ***  Deleting TEMP files (add "--save" option if you want to keep all file!)')
         os.system('rm -f '+opt.TMPDIR+'/*')
+
+#####################################################
+### OPTION: FIMPUTE
+#####################################################
+if opt.FIMPUTE:
+    logit('\n    -----------------     ')
+    logit(' ***  FImpute software   ***')
+    logit('      -----------------   \n')
+
+    ##check same SNP position in map file ##EZE SPOSTARE QUESTO COME CONTROLLO GENERALE?
+    logit('\n      Step 1: Check mapfile')
+    outcome=CHECK_map.snp_position(mapfile,opt.OUTDIR)
+    if not outcome[0]:bomb(outcome[1])
+    ##check chr 0 in mapfile
+    chromosome=dict( (map_line.upper().strip().split()[0],0) for map_line in open(mapfile)) 
+    if imputation:
+        if '0' in chromosome.keys():bomb("Chromosome '0' not allowed in FImpute. Chromosome numbers must range from 1 to N")
+
+    ##frequency in pedfile ATCGT format
+    logit('\n      Step 2: Allele frequency calculation using PLINK')
+    outcome = FIMPUTE_plugin.allele_freq(PLINK_PATH,pedfile,mapfile,opt.TMPDIR,spe,'freqACGT')
+    #check error in plink log
+    if any('Error:' in string for string in outcome):
+        bomb("PLINK freq failed! Please check "+opt.TMPDIR+"/freqACGT.log to find what went wrong!")
+    if opt.DEBUG:logit('Allele Frequency :\n '+opt.TMPDIR+"/freqACGT.frq")
+
+    ## Checking genotypes are not 1/2 (reading first line)
+    alleletype=False
+    genos=open(pedfile,'r').readline().replace('\t',' ').strip().split()[6:].count('1')
+    if genos:alleletype=True
+
+    if not alleletype:
+        ## Conversion in 12 format with PLINK
+        logit('\n      Step 3: Converting alleles to 1/2 coding format using PLINK')
+        outcome = sub.Popen([str(PLINK_PATH+'./plink '+spe+' --recode 12 --ped '+pedfile+' --map '+\
+                                     mapfile+' --out '+opt.TMPDIR+'/FIMPUTE_recode12')],\
+                                shell=True,stdout=sub.PIPE, stderr=sub.STDOUT).stdout.readlines()
+        if any('Error:' in string for string in outcome):
+            bomb("PLINK recode12 failed! Please check "+opt.TMPDIR+"/FIMPUTE_recode12.log to find what went wrong!")
+        ped_fimpute_recode=opt.TMPDIR+'/FIMPUTE_recode12.ped'
+        map_fimpute_recode=opt.TMPDIR+'/FIMPUTE_recode12.map'
+    else:
+        logit('\n      Step 3: Not converting alleles to 1/2 coding format)')
+        ped_fimpute_recode=pedfile
+        map_fimpute_recode=mapfile
+
+    if opt.DEBUG:logit('PED_MAP_AFTER_RECODE 1/2:\n Pedfile:\n'+opt.TMPDIR+'/FIMPUTE_recode12.ped'+'\n Mapfile:\n'\
+                           +opt.TMPDIR+'/FIMPUTE_recode12.map')
+
+    ## creation file for FImpute
+    logit('\n      Step 4: Converting Genotype for Fimpute')
+    genotype_out=opt.TMPDIR+'/genotype.FM'
+    if output_name:genotype_out=str(opt.TMPDIR+'/genotype'+output_name+'.FM')
+    outcome = FIMPUTE_plugin.conversion_PLINK_to_Fimpute(ped_fimpute_recode,genotype_out)
+    
+    ## creation SNP file for FImpute
+    logit('\n      Step 5: Converting SNP map for Fimpute')
+    snpinfo_out=opt.TMPDIR+'/snp_info.FM'
+    if output_name:snpinfo_out=str(opt.TMPDIR+'/snp_info'+output_name+'.FM')
+    outcome = FIMPUTE_plugin.map_convert_FImipute(map_fimpute_recode,snpinfo_out)
+    
+    ## Process pedigree (if present)
+    if fimpute_pedigree:
+        logit('\n      Step 6: Pedigree conversion')
+        out_pedig=opt.OUTDIR+'/FIMPUTE.pedig'
+        if output_name:out_pedig=str(opt.OUTDIR+'/FIMPUTE'+output_name+'.pedig')
+        FIMPUTE_plugin.pedig_save(pedigree,out_pedig)
+        logit("\n"+" "*14+"[GOOD NEWS]: Pedigree file created OK!")
+        logit(" "*27+"- Output Pedigree           : %s " % out_pedig)
+        fimpute_othopt=['ped_file = "'+out_pedig+'";\n']
+        fimpar[1][1]=fimpar[1][1]+fimpute_othopt[0]
+    else:
+        logit('\n      ---> Skipping Step 6 (Pedigree not provided)')
+
+    ##creation paramfile for FImpute
+    logit('\n      Step 7: Creation Paramater file for FImpute software')
+    param_fimpute=opt.TMPDIR+'/param_FImpute.FM'
+    if output_name:param_fimpute=str(opt.TMPDIR+'/param_FImpute'+output_name+'.FM')
+    output_folder=opt.OUTDIR+'/output_FImpute'
+    if output_name:output_folder=str(opt.OUTDIR+'/OUTPUT_FImpute'+output_name)
+    outcome = FIMPUTE_plugin.param_FImpute(genotype_out,snpinfo_out,opt.TMPDIR,output_folder,param_fimpute,fimpar)
+
+    ## Do the job
+    logit('\n      Step 8: Imputing data using FImpute v.4')
+    outcome = sub.Popen([str(FIMPUTE_PATH+'./FImpute '+param_fimpute+' -o')],\
+                           shell=True,stdout=sub.PIPE, stderr=sub.STDOUT).stdout.readlines()
+
+    ## Check FImpute run ok.
+    if 'Completed' in outcome[-1]:logit("\n"+" "*14+"[GOOD NEWS]: FImpute run OK!")
+    else:
+        output_error=open(opt.TMPDIR+'/FImpute_error.log','w')
+        output_error.write('%s'%(' '.join(outcome)))
+        bomb("FImpute failed! Please check "+opt.TMPDIR+"/FImpute_error.log to find what went wrong!")
+    if opt.DEBUG:logit('OUTCOME_FIMPUTE:\n'+str(outcome)+'\n')
+
+    ##rename map file
+    final_map=opt.OUTDIR+'/FIMPUTE.map'
+    if output_name:final_map=str(opt.OUTDIR+'/FIMPUTE'+output_name+'.map')
+
+    #converted FImpute file to plink format
+    logit('\n      Step 9: Convert FImput output in PLINK format (.ped/.map)')
+    final_ped=opt.OUTDIR+'/FIMPUTE.ped'
+    if output_name:final_ped=str(opt.OUTDIR+'/FIMPUTE'+output_name+'.ped')
+    outcome = FIMPUTE_plugin.conversion_Fimpute_to_PLINK(output_folder+'/genotypes_imp.txt',opt.TMPDIR,final_ped,pedfile,output_folder,final_map)
+
+    if outcome:
+        logit("\n"+" "*14+"[GOOD NEWS]: Imputed Ped file created OK!")
+        logit(" "*27+"- Output FImpute [.ped/.map]  : %s " % final_ped.replace('.ped','[.ped/.map]'))
+        logit(" "*27+"- Output FImpute (folder)     : %s " % output_folder)
+        ##change new .ped/.map file
+        pedfile=final_ped
+        mapfile=final_map
+
+    # If not --save option, delete temp files
+    if not opt.SAVEIT:
+        os.system('rm -f '+opt.TMPDIR+'/*')
+
 
 ######################################
 ### OPTION: HAPLOTYPE PREP (PART TWO) 
@@ -986,7 +1129,7 @@ if opt.OPTIPREP:
     if not opt.SAVEIT:
         os.system('rm -f '+opt.TMPDIR+'/*')
 
-#######################################################################
+
 
 if not opt.SAVEIT: 
     logit('\n ***  Deleting TEMP folder (add "--save" option if you want to keep this folder!)')
