@@ -19,10 +19,10 @@ DWNL=${@:3}  # This is the list of software to download
 ####################################################################################
 method=wget
 opt=-O
-PLINK=https://www.cog-genomics.org/static/bin/plink150903/plink_linux_x86_64.zip
+PLINK=https://www.cog-genomics.org/static/bin/plink151012/plink_linux_x86_64.zip
 FCGENE=http://sourceforge.net/projects/fcgene/files/latest/download
 BEAGLE3=https://faculty.washington.edu/browning/beagle/beagle.jar
-BEAGLE4=http://faculty.washington.edu/browning/beagle/beagle.r1399.jar
+BEAGLE4=https://faculty.washington.edu/browning/beagle/beagle.r1399.jar
 ADMIXTURE=https://www.genetics.ucla.edu/software/admixture/binaries/admixture_linux-1.23.tar.gz
 FIMPUTE=http://www.aps.uoguelph.ca/~msargol/fimpute/FImpute_Linux.zip
 ####################################################################################
