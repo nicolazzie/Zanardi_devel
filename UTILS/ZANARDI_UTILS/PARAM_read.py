@@ -34,8 +34,9 @@ def inputfi(PARAMETERS,DEBUG,PEDIG,GSPREP):
     pedfile='NOT PROVIDED';mapfile='NOT PROVIDED';Ibull='NOT PROVIDED';Ibull_map='NOT PROVIDED';pedigree='NOT PROVIDED';output_name='';phenotype='NOT PROVIDED'
     variables=['INPUT_PED','INPUT_MAP','INPUT_705','INPUT_705_MAP','INPUT_PEDIG','SPECIES','OUTPUT_NAME','INPUT_PHENO']
     for variable in variables:
-        matching=[par for par in PARAMETERS if variable in par][0].strip().split('=')
-        if not matching[0]:return(False,variable + " required variable not found in parameter file!")
+        matching=[par for par in PARAMETERS if variable in par]
+        if not matching:return(False,variable + " required variable not found in parameter file!")
+        matching=matching[0].strip().split('=')
         if variable == variables[0]:
             if len(matching[1])==0:continue
             pedfile=matching[1].strip().split(',')
